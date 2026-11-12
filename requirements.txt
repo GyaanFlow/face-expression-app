@@ -5,6 +5,7 @@ safetensors
 numpy
 pandas
 scipy
+scikit-learn
 pillow
 torch
 torchvision

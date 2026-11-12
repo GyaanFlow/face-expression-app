@@ -26,6 +26,10 @@ class ExpressionMatcher:
         self.n_people = self.cfg.get("n_people")
         if self.w.shape != (len(self.labels), 2 * len(self.cols)):
             raise ValueError(f"weights {self.w.shape} do not match config")
+        if not np.isfinite(self.w).all():
+            raise ValueError("model weights contain NaN or infinity")
+        if len(set(self.cols)) != len(self.cols) or len(self.labels) != 10:
+            raise ValueError("config has duplicate feature columns or the wrong number of labels")
         log.info("model loaded: %s, cv %s", self.cfg.get("chosen", {}).get("name"), self.cv)
 
     def inputs(self, df):
@@ -41,6 +45,8 @@ class ExpressionMatcher:
         """df holds the 10 photos of one person. Returns (labels per photo, score matrix, probs)."""
         if len(df) != len(self.labels):
             raise ValueError(f"need exactly {len(self.labels)} photos of one person, got {len(df)}")
+        if not np.isfinite(df[self.cols].to_numpy(float)).all():
+            raise ValueError("feature values must be finite numbers")
         s = self.inputs(df) @ self.w.T
         r, c = linear_sum_assignment(-s)
         pred = np.empty(len(df), dtype=int)

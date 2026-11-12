@@ -17,6 +17,7 @@ except Exception:
     pass
 
 from matcher import ExpressionMatcher
+import submission as sub
 from ui import CSS, cards_html, footer_html, heatmap_html, legend_html, pretty, steps_html, strip_html, thumb_uri, tiles_html
 
 logging.basicConfig(level=logging.INFO)
@@ -90,7 +91,94 @@ def show_result(title, names, pred, p, s, uris, truths):
     return labels, confs
 
 
-tab_photo, tab_csv, tab_guide, tab_about = st.tabs(["Test with photos", "Test with features csv", "Guide and FAQ", "About the model"])
+tab_sub, tab_photo, tab_csv, tab_guide, tab_about = st.tabs(["Get submission JSON", "Test with photos", "Test with features csv", "Guide and FAQ", "About the model"])
+
+# submission
+def show_checks(checks):
+    for ok, msg in checks:
+        st.markdown(("&#9989; " if ok else "&#10060; ") + msg)
+
+
+with tab_sub:
+    st.markdown('<div class="callout">The assignment page accepts <b>only a JSON file</b> with two keys, <code>version</code> and <code>weights</code> (10 rows of 156 numbers). Everything on this tab produces exactly that file.</div>', unsafe_allow_html=True)
+    st.markdown(steps_html([("Pick a route", "Route A downloads the ready trained model. Route B trains a model on your own features.csv files."),
+                            ("Check it", "The app runs the same checks as the submission page: keys, size, shape and finite numbers."),
+                            ("Download and submit", "Download the JSON, choose it on the assignment page, press Check, then Save.")]), unsafe_allow_html=True)
+    st.markdown("### Route A: download the trained model")
+    st.caption(f"Trained on {M.n_people} unique people. Honest accuracy on unseen people: {acc:.1f}%. This is the safest choice.")
+    jtext = sub.to_json(M.w)
+    checks = sub.validate(jtext, N, 2 * len(M.cols))
+    checks.append((sub.roundtrip_ok(jtext, M.w), "self test: the file gives the same matching as the loaded model"))
+    show_checks(checks)
+    st.download_button("Download model.json", jtext, "model.json", "application/json", type="primary",
+                       disabled=not sub.all_ok(checks), key="dl_model_json")
+    with st.expander("Preview the first row"):
+        st.code(jtext[:420] + " ...", language="json")
+    st.divider()
+    st.markdown("### Route B: train on your own features.csv")
+    st.caption("Upload one or more files from your assignment (columns person_id, intended_expression and the 78 features). Exact duplicate people across files are removed. With only one ZIP (about 30 people) expect lower accuracy than route A.")
+    ups = st.file_uploader("features.csv files", type=["csv"], accept_multiple_files=True, key="train_csvs")
+    alpha = st.select_slider("Regularisation strength (ridge alpha)", options=[300.0, 1000.0, 3000.0], value=1000.0,
+                             help="1000 was the best setting in the notebook. Higher is safer with few people.")
+    if st.button("Train and build JSON", disabled=not ups, key="train_go"):
+        frames, problem = [], None
+        for f in ups:
+            try:
+                d = pd.read_csv(f)
+            except Exception as ex:
+                problem = f"Could not read {f.name}: {ex}"
+                break
+            need = ["person_id", "intended_expression"] + M.cols
+            miss = [c for c in need if c not in d.columns]
+            if miss:
+                problem = f"{f.name} is missing columns, for example {miss[:3]}"
+                break
+            d[M.cols] = d[M.cols].apply(pd.to_numeric, errors="coerce")
+            if not np.isfinite(d[M.cols].to_numpy(float)).all():
+                problem = f"{f.name} has empty or non numeric feature values"
+                break
+            frames.append(d)
+        if problem:
+            st.error(problem)
+        else:
+            if sum(len(d) for d in frames) > 5000:
+                st.error("That is more than 5000 rows in total. Upload fewer files.")
+                st.stop()
+            X, y, g, info = sub.prepare_people(frames, M.cols, M.labels)
+            st.info(f"{info['listed']} people listed, {info['dup']} duplicates removed, {info['bad']} skipped (need 10 rows with all 10 expressions), {info['kept']} used.")
+            if X is None or info["kept"] < 8:
+                st.error("Need at least 8 usable people to train. Add more files.")
+            else:
+                with st.spinner("Cross validating and training..."):
+                    m, sd = sub.cv_ridge(X, y, g, alpha)
+                    W = sub.fit_ridge(X, y, alpha)
+                text = sub.to_json(W)
+                chk = sub.validate(text, N, 2 * len(M.cols))
+                chk.append((sub.roundtrip_ok(text, W), "self test: the file gives the same matching as the trained model"))
+                st.session_state["own_json"] = (text, chk, m, sd, info["kept"])
+    own = st.session_state.get("own_json")
+    if own:
+        text, chk, m, sd, kept = own
+        st.markdown(f"**Estimated accuracy on unseen people: {m * 100:.1f}% (plus or minus {sd * 100:.1f})** from {kept} unique people.")
+        if m * 100 < acc - 1.5:
+            st.warning(f"This is below route A ({acc:.1f}%). Route A was trained on more people, so it is likely the better submission.")
+        show_checks(chk)
+        st.download_button("Download my_model.json", text, "my_model.json", "application/json", disabled=not sub.all_ok(chk), key="dl_own_json")
+    st.divider()
+    st.markdown("### Check any JSON before you submit")
+    c1, c2 = st.columns(2)
+    with c1:
+        vf = st.file_uploader("Choose a JSON file", type=["json"], key="val_file")
+    with c2:
+        vt = st.text_area("or paste it here", height=110, key="val_text", placeholder='{"version":"linear-rank-v1","weights":[ ... ]}')
+    vsrc = vf.getvalue().decode("utf-8", "replace") if vf else (vt.strip() or None)
+    if vsrc:
+        vc = sub.validate(vsrc, N, 2 * len(M.cols))
+        show_checks(vc)
+        if sub.all_ok(vc):
+            st.success("Valid. A valid file earns 0 marks now. The bonus marks come from its accuracy on unseen people after the project closes.")
+        else:
+            st.error("Fix the items marked with a cross before you submit.")
 
 # photos
 MAX_SIDE = 1024
