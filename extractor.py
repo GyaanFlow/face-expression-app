@@ -1,6 +1,11 @@
 """Photo -> the 78 Py-Feat features used in training (51 blendshapes, 20 AUs, 7 emotions)."""
 import logging
+import os
+import shutil
+import sys
+import tempfile
 import threading
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,12 +15,40 @@ _lock = threading.Lock()
 _det = None
 
 
+def _writable_resources():
+    """Py-Feat downloads model weights into its own package folder, which is read only on
+    Streamlit Cloud. Point it at a writable copy in the temp dir instead."""
+    import feat
+    import feat.utils.io as fio
+
+    src = Path(feat.__path__[0]) / "resources"
+    if os.access(src, os.W_OK):
+        return
+    dst = Path(os.environ.get("FEAT_RESOURCE_DIR") or tempfile.gettempdir()) / "feat_resources"
+    dst.mkdir(parents=True, exist_ok=True)
+    if src.exists():
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    path = str(dst)
+
+    def get_resource_path():
+        return path
+
+    fio.get_resource_path = get_resource_path
+    for name, mod in list(sys.modules.items()):
+        if name.startswith("feat") and hasattr(mod, "get_resource_path"):
+            mod.get_resource_path = get_resource_path
+    log.info("py-feat resources redirected to %s", path)
+
+
 def _detector():
     global _det
     if _det is None:
+        _writable_resources()
         from feat import Detectorv2
+        _writable_resources()
         log.info("loading Py-Feat Detectorv2 (first call downloads weights)")
-        _det = Detectorv2(device="cpu")
+        # identity_model=None skips the face-identity network, which we do not use
+        _det = Detectorv2(device="cpu", identity_model=None)
     return _det
 
 
