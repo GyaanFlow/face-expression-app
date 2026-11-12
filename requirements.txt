@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit>=1.40
+huggingface_hub
+safetensors
+numpy
+pandas
+scipy
+pillow
+torch
+torchvision
+py-feat==2.1.5
