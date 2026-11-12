@@ -17,7 +17,7 @@ except Exception:
     pass
 
 from matcher import ExpressionMatcher
-from ui import CSS, cards_html, heatmap_html, thumb_uri
+from ui import CSS, cards_html, footer_html, heatmap_html, legend_html, pretty, steps_html, strip_html, thumb_uri, tiles_html
 
 logging.basicConfig(level=logging.INFO)
 REPO = os.environ.get("MODEL_REPO", "23f1000805/face-expression-v3")
@@ -46,12 +46,16 @@ with st.sidebar:
     st.divider()
     st.caption("Photos are processed in memory and deleted after each run. Nothing is stored.")
     st.caption("Hardest pairs: sad vs hopelessness, scepticism vs uncertainty.")
+    st.divider()
+    st.markdown("Built by [Gaurav Tomar](https://www.linkedin.com/in/gaurav-tomar-630b2a316)")
 
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown(f"""<div class="hero"><h1>Face Expression Matcher</h1>
-<p>Give it ten photos of one person and it works out which of ten expressions each photo shows.</p>
-<div class="pills"><span>10 expressions</span><span>Py-Feat features</span><span>Linear model from the Hub</span>
-<span>Held-out accuracy {acc:.0f}%</span></div></div>""", unsafe_allow_html=True)
+<p>Give it ten photos of one person. It reads each face with Py-Feat and works out which of ten expressions every photo shows, using each expression exactly once.</p>
+<div class="pills"><span>10 expressions</span><span>Py-Feat Detectorv2</span><span>Linear model on the Hugging Face Hub</span>
+<span>Runs privately, nothing stored</span></div></div>""", unsafe_allow_html=True)
+st.markdown(tiles_html([(f"{acc:.1f}%", "held-out accuracy (chance is 10%)"), (str(M.n_people), "unique people in training"),
+                        (str(N), "expressions"), (str(len(M.cols)), "Py-Feat features per photo")]), unsafe_allow_html=True)
 
 
 def example_sets():
@@ -65,17 +69,28 @@ def example_csvs():
 def show_result(title, names, pred, p, s, uris, truths):
     labels = [M.labels[k] for k in pred]
     confs = [float(p[i, pred[i]]) for i in range(len(pred))]
+    alts = []
+    for i in range(len(pred)):
+        q = p[i].copy()
+        q[pred[i]] = -1
+        j = int(np.argmax(q))
+        alts.append((M.labels[j], float(p[i, j])))
     st.markdown(f"### {title}")
+    items = [(f"{np.mean(confs) * 100:.0f}%", "average confidence")]
+    low = [names[i] for i in range(len(confs)) if confs[i] < 0.2]
+    items.append((str(len(low)), "low confidence photos"))
     if truths:
         hit = sum(1 for a, b in zip(labels, truths) if a == b)
-        st.markdown(f'<div class="acc">{hit * 100 // len(labels)}% of this person\'s photos match their label</div>', unsafe_allow_html=True)
-    st.markdown(cards_html(names, labels, confs, uris, truths), unsafe_allow_html=True)
+        items.insert(0, (f"{hit * 100 // len(labels)}%", "match the labelled expression"))
+    st.markdown(strip_html(items), unsafe_allow_html=True)
+    st.markdown(cards_html(names, labels, confs, uris, truths, alts), unsafe_allow_html=True)
     with st.expander("Score of every photo for every expression"):
+        st.caption("Green means the model leans towards that expression for that photo, red means against. The final answer is the best one-to-one assignment, so a photo can get its second choice when another photo needs its first.")
         st.markdown(heatmap_html(s, names, M.labels), unsafe_allow_html=True)
     return labels, confs
 
 
-tab_photo, tab_csv, tab_about = st.tabs(["Test with photos", "Test with features csv", "About the model"])
+tab_photo, tab_csv, tab_guide, tab_about = st.tabs(["Test with photos", "Test with features csv", "Guide and FAQ", "About the model"])
 
 # photos
 MAX_SIDE = 1024
@@ -119,6 +134,10 @@ def features_for(md5, path):
 
 
 with tab_photo:
+    st.markdown(steps_html([("Collect 10 photos", "One person, ten different expressions, one photo each. Clear, front facing, one face, good light."),
+                            ("Upload or pick an example", "Drop all ten files in together, or load a ready made example set."),
+                            ("Press Match expressions", "The first run downloads the face model, so wait about a minute. After that it takes seconds.")]), unsafe_allow_html=True)
+    st.markdown("**The ten expressions it can assign**" + legend_html(M.labels), unsafe_allow_html=True)
     left, right = st.columns([3, 2])
     with left:
         up = st.file_uploader(f"Upload {N} photos of one person", type=["jpg", "jpeg", "png", "webp"],
@@ -187,6 +206,7 @@ with tab_photo:
 
 # csv
 with tab_csv:
+    st.markdown('<div class="callout">Use this tab when you already have the 78 Py-Feat numbers per photo, for example the <b>features.csv</b> from the assignment. It needs no face model, so it is instant.</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([3, 2])
     with c1:
         upc = st.file_uploader("features.csv (78 feature columns, 10 rows per person, optional person_id)", type=["csv"])
@@ -247,6 +267,48 @@ with tab_csv:
                 st.info(f"{hits / total * 100:.1f}% matched on {len(tables)} people. If these people were in training, this is optimistic.")
             st.download_button("Download predictions csv", out.to_csv(index=False), "predictions.csv", "text/csv", key="dl_csv")
 
+with tab_guide:
+    st.markdown("## How to get a good result")
+    st.markdown(steps_html([("Same person", "All ten photos must be of one person. Mixing people breaks the comparison, because every photo is ranked against the other nine."),
+                            ("Ten different expressions", "The model hands out each of the ten expressions exactly once, so the set should really cover ten different looks."),
+                            ("Clear faces", "Front facing, one face, eyes and mouth visible, no heavy shadows, no masks, no tiny images.")]), unsafe_allow_html=True)
+    with st.expander("Photo requirements", expanded=True):
+        st.markdown("""
+- File types: jpg, jpeg, png, webp. Each file up to 15 MB. Very large photos are shrunk automatically.
+- Exactly 10 photos per run.
+- If a photo has several faces, the biggest face is used.
+- A photo with no detectable face is reported by number so you can swap it.
+""")
+    with st.expander("Features csv format"):
+        st.markdown(f"""
+- One row per photo, ten rows per person.
+- The {len(M.cols)} feature columns must be present with these names: 51 columns starting `bs_`, 20 starting `au_`, 7 starting `emotion_`.
+- Optional columns: `person_id` (needed if the file has several people), `photo_id`, `intended_expression`.
+- With `intended_expression` present, every card shows match or mismatch.
+""")
+        st.code(", ".join(M.cols[:6]) + ", ...", language="text")
+    with st.expander("Reading the results"):
+        st.markdown("""
+- **Chip and bar:** the expression given to that photo and how strongly the model favours it compared with the other nine expressions for the same photo.
+- **Low:** under 20 percent confidence. Treat that photo as a coin flip between its top choices.
+- **Next likely:** the model's second choice for that photo. It is useful for the confusable pairs.
+- **Heatmap:** raw scores for every photo and expression. The shown labels are the best one-to-one assignment, not just each row's maximum.
+""")
+    with st.expander("Frequently asked questions"):
+        st.markdown(f"""
+**Why exactly ten photos?** The model was built for a task where each person has ten photos and each expression appears once. It uses the other nine photos as a reference for the person, so a single photo cannot be judged alone.
+
+**How accurate is it?** About {acc:.0f}% of photos get the right expression on people the model never saw. Chance is 10%. It is much better at happy and surprised than at sad vs hopelessness or scepticism vs uncertainty, which look almost the same on a face.
+
+**Does it read real emotions?** No. It matches the expression a person was asked to show. It says nothing about how anyone feels.
+
+**Are my photos stored?** No. They are decoded in memory, written to a temporary file for the face reader, and deleted at the end of the run.
+
+**The photo tab is slow or crashed.** The first run downloads the face model, which takes about a minute. On a small free server the face reader can run out of memory. The features csv tab always works.
+
+**Can I use it on a single person with fewer expressions?** Not meaningfully. Add photos until there are ten.
+""")
+
 with tab_about:
     st.markdown(f"""
 ### How it works
@@ -263,3 +325,5 @@ with tab_about:
 - Use ten photos of the same person, one per expression, face clearly visible.
 - Photos are processed in memory and not stored.
 """)
+
+st.markdown(footer_html(), unsafe_allow_html=True)

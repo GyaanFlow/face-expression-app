@@ -35,6 +35,29 @@ CSS = """
 .hm{overflow-x:auto}.hm table{border-collapse:collapse;font-size:12px;width:100%}
 .hm th,.hm td{padding:5px 7px;text-align:center;border:1px solid rgba(128,128,128,.25)}
 .hm th{background:rgba(128,128,128,.12);white-space:nowrap}
+.hero{background-size:200% 200%;animation:flow 14s ease infinite;box-shadow:0 10px 30px rgba(79,70,229,.25)}
+@keyframes flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0 6px}
+@media(max-width:800px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--secondary-background-color);border:1px solid rgba(128,128,128,.22);border-radius:14px;padding:14px 16px}
+.tile b{display:block;font-size:24px;line-height:1.1}.tile span{font-size:12.5px;opacity:.65}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:8px 0 14px}
+@media(max-width:800px){.steps{grid-template-columns:1fr}}
+.step{border-radius:14px;padding:16px;border:1px solid rgba(128,128,128,.22);background:var(--secondary-background-color);position:relative}
+.step .n{position:absolute;top:-12px;left:14px;background:linear-gradient(135deg,#4f46e5,#db2777);color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.step h4{margin:6px 0 4px;font-size:15px}.step p{margin:0;font-size:13px;opacity:.75;line-height:1.45}
+.strip{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
+.strip div{padding:8px 14px;border-radius:12px;background:rgba(79,70,229,.1);font-size:13.5px}
+.strip b{font-size:16px}
+.alt{font-size:11.5px;opacity:.6;margin-top:3px}
+.low{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;background:rgba(245,158,11,.2);color:#b45309;margin-left:6px;font-weight:600}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px}
+.legend span{font-size:12px;padding:3px 10px;border-radius:999px;color:#fff;font-weight:600}
+.callout{border-left:4px solid #4f46e5;background:rgba(79,70,229,.08);padding:10px 14px;border-radius:0 10px 10px 0;font-size:14px;margin:8px 0}
+.callout.warn{border-color:#f59e0b;background:rgba(245,158,11,.1)}
+.foot{margin-top:34px;padding:18px 20px;border-radius:16px;text-align:center;border:1px solid rgba(128,128,128,.22);background:var(--secondary-background-color);font-size:13.5px}
+.foot a{color:#4f46e5;font-weight:600;text-decoration:none}.foot a:hover{text-decoration:underline}
+.foot small{display:block;opacity:.6;margin-top:4px}
 </style>
 """
 
@@ -51,22 +74,24 @@ def thumb_uri(file_or_path, px=240):
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def card(title, label, conf, uri=None, truth=None):
+def card(title, label, conf, uri=None, truth=None, alt=None):
     col = COLORS.get(label, "#64748b")
     img = f'<img src="{uri}" alt="">' if uri else f'<div class="noimg">{html.escape(title)}</div>'
     cap = f'<div class="cap">{html.escape(title)}</div>' if uri else ""
     tr = ""
     if truth is not None:
         tr = '<div class="ok">match</div>' if truth == label else f'<div class="bad">expected {html.escape(pretty(truth))}</div>'
+    low = '<span class="low">low</span>' if conf < 0.2 else ""
+    altt = f'<div class="alt">next likely: {html.escape(pretty(alt[0]))} {alt[1] * 100:.0f}%</div>' if alt else ""
     return (f'<div class="fx">{img}{cap}<div class="chip" style="background:{col}">{html.escape(pretty(label))}</div>'
             f'<div class="meter"><i style="width:{conf * 100:.0f}%;background:{col}"></i></div>'
-            f'<div class="pct">{conf * 100:.0f}% confidence</div>{tr}</div>')
+            f'<div class="pct">{conf * 100:.0f}% confidence{low}</div>{altt}{tr}</div>')
 
 
-def cards_html(names, labels, confs, uris=None, truths=None):
+def cards_html(names, labels, confs, uris=None, truths=None, alts=None):
     out = ""
     for i in range(len(labels)):
-        out += card(names[i], labels[i], confs[i], uris[i] if uris else None, truths[i] if truths else None)
+        out += card(names[i], labels[i], confs[i], uris[i] if uris else None, truths[i] if truths else None, alts[i] if alts else None)
     return f'<div class="grid">{out}</div>'
 
 
@@ -83,3 +108,32 @@ def heatmap_html(s, rows, label_names):
             tds += f'<td style="background:rgba({c},{a:.2f})">{s[i, j]:.2f}</td>'
         body += f"<tr><th>{html.escape(rows[i])}</th>{tds}</tr>"
     return f'<div class="hm"><table><tr><th></th>{head}</tr>{body}</table></div>'
+
+
+def tiles_html(items):
+    t = "".join(f'<div class="tile"><b>{html.escape(a)}</b><span>{html.escape(b)}</span></div>' for a, b in items)
+    return f'<div class="tiles">{t}</div>'
+
+
+def steps_html(steps):
+    t = ""
+    for i in range(len(steps)):
+        t += f'<div class="step"><div class="n">{i + 1}</div><h4>{html.escape(steps[i][0])}</h4><p>{html.escape(steps[i][1])}</p></div>'
+    return f'<div class="steps">{t}</div>'
+
+
+def legend_html(labels):
+    t = "".join(f'<span style="background:{COLORS.get(l, "#64748b")}">{html.escape(pretty(l))}</span>' for l in labels)
+    return f'<div class="legend">{t}</div>'
+
+
+def strip_html(items):
+    t = "".join(f"<div><b>{html.escape(a)}</b> {html.escape(b)}</div>" for a, b in items)
+    return f'<div class="strip">{t}</div>'
+
+
+def footer_html():
+    return ('<div class="foot">Built by <a href="https://www.linkedin.com/in/gaurav-tomar-630b2a316" target="_blank" rel="noopener">Gaurav Tomar</a>'
+            ' &middot; <a href="https://www.linkedin.com/in/gaurav-tomar-630b2a316" target="_blank" rel="noopener">Connect on LinkedIn</a>'
+            '<small>Facial features by Py-Feat. Linear model and weights hosted on the Hugging Face Hub. '
+            'Predictions describe the intended expression in a photo, not anyone\'s real feelings.</small></div>')
