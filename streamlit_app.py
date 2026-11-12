@@ -189,7 +189,7 @@ def prepare(src):
     """Decode, fix rotation, shrink. Returns (md5, path, thumb_uri) or raises ValueError with a readable message."""
     import hashlib
     import tempfile
-    from PIL import Image, ImageOps, UnidentifiedImageError
+    from PIL import Image, ImageOps
     if isinstance(src, str):
         raw = Path(src).read_bytes()
         name = Path(src).name
@@ -200,7 +200,7 @@ def prepare(src):
         raise ValueError(f"{name} is larger than {MAX_MB} MB")
     try:
         im = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
-    except (UnidentifiedImageError, OSError):
+    except Exception:
         raise ValueError(f"{name} is not a readable image")
     if min(im.size) < 80:
         raise ValueError(f"{name} is too small ({im.size[0]}x{im.size[1]})")
@@ -213,9 +213,10 @@ def prepare(src):
 
 
 @st.cache_data(show_spinner=False, max_entries=300)
-def features_for(md5, path):
+def features_for(md5, _path):
+    # _path starts with an underscore so Streamlit leaves it out of the cache key (the temp file name changes every run)
     from extractor import extract
-    df, bad = extract([path], M.cols)
+    df, bad = extract([_path], M.cols)
     if bad:
         raise RuntimeError(bad[0][1])
     return df.drop(columns="_idx").iloc[0].to_dict()
