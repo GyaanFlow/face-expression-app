@@ -1,0 +1,10 @@
+[theme]
+primaryColor = "#4f46e5"
+baseRadius = "large"
+buttonRadius = "full"
+
+[server]
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false
