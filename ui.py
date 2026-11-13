@@ -58,6 +58,17 @@ CSS = """
 .foot{margin-top:34px;padding:18px 20px;border-radius:16px;text-align:center;border:1px solid rgba(128,128,128,.22);background:var(--secondary-background-color);font-size:13.5px}
 .foot a{color:#4f46e5;font-weight:600;text-decoration:none}.foot a:hover{text-decoration:underline}
 .foot small{display:block;opacity:.6;margin-top:4px}
+.guest{border-radius:18px;padding:20px 22px;margin:6px 0 12px;border:1px solid rgba(79,70,229,.35);
+ background:linear-gradient(135deg,rgba(79,70,229,.10),rgba(219,39,119,.08))}
+.guest h3{margin:0 0 6px}.guest p{margin:0 0 8px;opacity:.85;font-size:14.5px}
+.guest ol{margin:6px 0 0 18px;padding:0;font-size:14px;line-height:1.7}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;
+ background:rgba(22,163,74,.15);color:#15803d;margin-left:8px;vertical-align:middle}
+.badge.warn{background:rgba(245,158,11,.18);color:#b45309}
+.mcard{border-radius:14px;padding:12px 14px;border:1px solid rgba(128,128,128,.22);background:var(--secondary-background-color);font-size:13px;line-height:1.6}
+.mcard b{font-size:13.5px}
+.fx{transition:transform .15s ease,box-shadow .15s ease}.fx:hover{transform:translateY(-3px);box-shadow:0 8px 22px rgba(0,0,0,.12)}
+.tile{transition:transform .15s ease}.tile:hover{transform:translateY(-2px)}
 </style>
 """
 

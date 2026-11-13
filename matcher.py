@@ -17,13 +17,31 @@ class ExpressionMatcher:
     def __init__(self, repo_or_dir):
         p = Path(repo_or_dir)
         if not p.is_dir():
-            p = Path(snapshot_download(repo_or_dir, allow_patterns=["config.json", "model.safetensors"], token=os.environ.get("HF_TOKEN") or None))
+            p = Path(snapshot_download(repo_or_dir, allow_patterns=["config.json", "model.safetensors", "metrics.json", "reports/*.csv"],
+                                       token=os.environ.get("HF_TOKEN") or None))
         self.cfg = json.loads((p / "config.json").read_text())
         self.w = load_file(str(p / "model.safetensors"))["weights"].astype(np.float64)
         self.cols = list(self.cfg["feature_columns"])
         self.labels = list(self.cfg["labels"])
         self.cv = self.cfg.get("cv_accuracy")
         self.n_people = self.cfg.get("n_people")
+        self.dir = p
+        self.chosen = self.cfg.get("chosen", {}) or {}
+        self.trained = self.cfg.get("trained")
+        self.metrics = {}
+        self.reports = {}
+        try:
+            if (p / "metrics.json").exists():
+                self.metrics = json.loads((p / "metrics.json").read_text())
+        except Exception:
+            log.warning("metrics.json unreadable, model insights will be limited")
+        for name in ("leaderboard", "confusion", "per_class"):
+            f = p / "reports" / f"{name}.csv"
+            if f.exists():
+                try:
+                    self.reports[name] = pd.read_csv(f)
+                except Exception:
+                    pass
         if self.w.shape != (len(self.labels), 2 * len(self.cols)):
             raise ValueError(f"weights {self.w.shape} do not match config")
         if not np.isfinite(self.w).all():
